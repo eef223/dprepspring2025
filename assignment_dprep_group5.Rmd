@@ -1,0 +1,99 @@
+---
+title: "Assignment DPREP Group 5"
+author: "Eveline Verhage"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    number_sections: true
+  html_document: default
+geometry: margin=2.5cm
+fontsize: 11pt
+---
+
+
+# Question 1.1
+How do audience ratings of “escapist” movie genres (fantasy, comedy, romance) compare to “heavy” genres (drama, thriller) across different historical release periods — Pre-War (≤1940), Post-War Boom (1950–1970), Pre-Digital/Pre-2000 (1970–1990), and the Modern Era (1990–2025)?
+
+# part 2.1
+```{r}
+# load the data
+library(readr)
+library(dplyr)
+library(tidyr)
+
+# 1) Download a sample directly from IMDb (fast & reproducible)
+basics <- read_tsv(
+  "https://datasets.imdbws.com/title.basics.tsv.gz",
+  na = "\\N",
+  col_select = c(tconst, titleType, startYear, genres),
+  n_max = 100000
+)
+
+ratings <- read_tsv(
+  "https://datasets.imdbws.com/title.ratings.tsv.gz",
+  na = "\\N",
+  col_select = c(tconst, averageRating, numVotes),
+  n_max = 100000
+)
+
+# 2) Merge on tconst
+imdb_sample <- basics %>%
+  inner_join(ratings, by = "tconst")
+
+# 1) Movies filtered by startyear
+imdb_movies <- imdb_sample %>%
+  filter(titleType == "movie", !is.na(startYear)) %>%
+  mutate(period = case_when(
+    startYear <= 1939 ~ "Pre-war (<=1939)",
+    startYear >= 1940 & startYear <= 1949 ~ "War decade (1940–1949)",
+    startYear >= 1950 & startYear <= 1964 ~ "Post-war (1950–1964)",
+    startYear >= 1965 & startYear <= 1979 ~ "Modern I (1965–1979)",
+    startYear >= 1980 & startYear <= 2025 ~ "Modern II (1980–2025)",
+    TRUE ~ NA_character_
+  )) %>%
+  filter(!is.na(period))
+
+# 2 Filter by numVotes to reduce noise
+imdb_movies <- imdb_movies %>%
+  filter(numVotes >= 1000)
+
+# 3) Map genre families (Escapist vs Heavy)
+imdb_movies_genrefam <- imdb_movies %>%
+  filter(!is.na(genres)) %>%
+  separate_rows(genres, sep = ",") %>%
+  mutate(genre_family = case_when(
+    genres %in% c("Fantasy", "Comedy", "Romance") ~ "Escapist",
+    genres %in% c("Drama", "Thriller")            ~ "Heavy",
+    TRUE                                          ~ NA_character_
+  )) %>%
+  filter(!is.na(genre_family))
+
+# 4) Distribution by period × genre family
+period_genre_counts <- imdb_movies_genrefam %>%
+  count(period, genre_family, name = "n") %>%
+  group_by(period) %>%
+  mutate(period_total = sum(n),
+         share_within_period = n / period_total) %>%
+  ungroup()
+
+period_genre_counts
+
+# 5) Quality overview
+period_genre_summary <- imdb_movies_genrefam %>%
+  group_by(period, genre_family) %>%
+  summarise(
+    n_titles   = n(),
+    avg_rating = mean(averageRating, na.rm = TRUE),
+    med_rating = median(averageRating, na.rm = TRUE),
+    avg_votes  = mean(numVotes, na.rm = TRUE),
+    med_votes  = median(numVotes, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(period, genre_family)
+
+period_genre_summary
+
+```
+
